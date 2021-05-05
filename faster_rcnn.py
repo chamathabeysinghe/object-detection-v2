@@ -20,7 +20,7 @@ from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
 # plt.rcParams["figure.figsize"] = (60, 20)
 
-BASE_DIR = '/home/cabe0006/mb20_scratch/chamath/object-detection-v2/'
+BASE_DIR = '/home/ubuntu/'
 CHECKPOINT_DIR = os.path.join(BASE_DIR, 'checkpoints')
 DATASET_DIR = os.path.join(BASE_DIR, 'dataset')
 train_csv = pd.read_csv(os.path.join(DATASET_DIR, 'train.csv'))
