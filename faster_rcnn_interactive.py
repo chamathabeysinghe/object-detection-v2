@@ -17,18 +17,18 @@ from torch.utils.data import DataLoader, Dataset
 from torch.utils.data.sampler import SequentialSampler, RandomSampler
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
-import math
+
 # plt.rcParams["figure.figsize"] = (60, 20)
 
 BASE_DIR = '/home/cabe0006/mb20_scratch/chamath/object-detection-v2/'
-CHECKPOINT_DIR = os.path.join(BASE_DIR, 'checkpoints')
+CHECKPOINT_DIR = os.path.join(BASE_DIR, 'checkpoints_interactive')
 DATASET_DIR = os.path.join(BASE_DIR, 'dataset')
 train_csv = pd.read_csv(os.path.join(DATASET_DIR, 'train.csv'))
 test_csv = pd.read_csv(os.path.join(DATASET_DIR, 'test.csv'))
 TRAIN_ROOT_PATH = os.path.join(DATASET_DIR, 'train/')
 TEST_ROOT_PATH = os.path.join(DATASET_DIR, 'test/')
-writer = SummaryWriter()
-BATCH_SIZE = 4
+writer = SummaryWriter('runs_interactive')
+BATCH_SIZE = 8
 
 def get_train_transforms():
     return A.Compose(
@@ -257,24 +257,29 @@ def collate_fn(batch):
 
 
 def train_step(epoch):
-    # model.train()
+    model.train()
     itr = 1
     loss_hist.reset()
     for images_in, targets_in, img_id in train_loader:
-        images = list(image.to(device) for image in images_in)
-        targets = [{k: v.to(device) for k, v in t.items()} for t in targets_in]
-        loss_dict = model(images, targets)
-        loss = sum(loss for loss in loss_dict.values())
-        loss_value = loss.item()
-        if (math.isnan(loss_value)):
-            continue
-        loss_hist.send(loss_value, loss_dict)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        try:
+            images = list(image.to(device) for image in images_in)
+            targets = [{k: v.to(device) for k, v in t.items()} for t in targets_in]
+            loss_dict = model(images, targets)
+            loss = sum(loss for loss in loss_dict.values())
+            loss_value = loss.item()
+            loss_hist.send(loss_value, loss_dict)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-        print(f"Iteration #{itr} loss: {loss_value}")
-        itr += 1
+            print(f"Iteration #{itr} loss: {loss_value}")
+            itr += 1
+        except:
+            print("ERROR OCCURRED")
+            # print(images_in.shape)
+            # print(targets_in.shape)
+            print("*************************")
+            raise
 
     loss_hist.write_summary(epoch)
     # update the learning rate
@@ -285,7 +290,7 @@ def train_step(epoch):
 
 
 def test_step(epoch):
-    # model.train()
+    model.train()
     itr = 1
     loss_hist_val.reset()
     with torch.no_grad():
@@ -372,26 +377,28 @@ train_loader = torch.utils.data.DataLoader(
     sampler=RandomSampler(train_dataset),
     pin_memory=False,
     drop_last=True,
-    num_workers=6,
+    num_workers=0,
     collate_fn=collate_fn,
 )
 val_loader = torch.utils.data.DataLoader(
     validation_dataset,
     batch_size=BATCH_SIZE,
-    num_workers=6,
+    num_workers=0,
     shuffle=False,
     sampler=SequentialSampler(validation_dataset),
     pin_memory=False,
     collate_fn=collate_fn,
 )
 
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+# device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 print('Cuda is available: {}'.format(torch.cuda.is_available()))
 cpu_device = torch.device("cpu")
 annType = 'bbox'
-cocoGt = COCO(os.path.join(DATASET_DIR, 'ground_truth-new.json'))
+cocoGt = COCO(os.path.join(DATASET_DIR, 'ground_truth.json'))
 num_classes = 2
-EPOCHS = 100
+EPOCHS = 30
 CHECKPOINT_FREQ = 1
 
 
@@ -399,10 +406,10 @@ model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True, pr
 in_features = model.roi_heads.box_predictor.cls_score.in_features
 model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
 
-# if torch.cuda.device_count() > 1:
-#   print("Let's use", torch.cuda.device_count(), "GPUs!")
-#   # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
-#   model = torch.nn.DataParallel(model)
+if torch.cuda.device_count() > 1:
+  print("Let's use", torch.cuda.device_count(), "GPUs!")
+  # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
+  model = torch.nn.parallel.DistributedDataParallel(model)
 
 model.to(device)
 params = [p for p in model.parameters() if p.requires_grad]
@@ -420,21 +427,22 @@ os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 if len(os.listdir(CHECKPOINT_DIR)) > 0:
     latest_file_index = max([int(f[11:f.index('.')]) for f in os.listdir(CHECKPOINT_DIR)])
     checkpoint_path = os.path.join(CHECKPOINT_DIR, 'checkpoint-{}.pt'.format(latest_file_index))
+
     print('Loading from : {}'.format(checkpoint_path))
     checkpoint = torch.load(checkpoint_path)
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     initial_epoch = checkpoint['epoch'] + 1
 
-model.train()
+
 for epoch in range(initial_epoch, EPOCHS):
     print('Training epoch: {}...'.format(epoch))
     train_loss = train_step(epoch)
     print('Evaluating...')
     test_loss = test_step(epoch)
     print(f"Epoch #{epoch} train_loss: {train_loss} test_loss: {test_loss}")
-    # print('COCO evaluation script...')
-    # coco_evaluation(epoch)
+    print('COCO evaluation script...')
+    coco_evaluation(epoch)
     if epoch % CHECKPOINT_FREQ == 0:
         print('Saving checkpoint...')
         torch.save({
