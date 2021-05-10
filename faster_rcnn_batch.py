@@ -215,17 +215,17 @@ class Averager:
     def write_summary(self, epoch):
         print('Saving logs to tensorboard...')
         if self.is_train:
-            writer.add_scalar('Train/total_loss', self.current_total, epoch)
-            writer.add_scalar('Train/loss_box_reg', self.loss_box_reg, epoch)
-            writer.add_scalar('Train/loss_classifier', self.loss_classifier, epoch)
-            writer.add_scalar('Train/loss_objectness', self.loss_objectness, epoch)
-            writer.add_scalar('Train/loss_rpn_box_reg', self.loss_rpn_box_reg, epoch)
+            writer.add_scalar('Train/total_loss', 1.0 * self.current_total / self.iterations, epoch)
+            writer.add_scalar('Train/loss_box_reg', 1.0 * self.loss_box_reg / self.iterations, epoch)
+            writer.add_scalar('Train/loss_classifier', 1.0 * self.loss_classifier / self.iterations, epoch)
+            writer.add_scalar('Train/loss_objectness', 1.0 * self.loss_objectness / self.iterations, epoch)
+            writer.add_scalar('Train/loss_rpn_box_reg', 1.0 * self.loss_rpn_box_reg / self.iterations, epoch)
         else:
-            writer.add_scalar('Test/total_loss', self.current_total, epoch)
-            writer.add_scalar('Test/loss_box_reg', self.loss_box_reg, epoch)
-            writer.add_scalar('Test/loss_classifier', self.loss_classifier, epoch)
-            writer.add_scalar('Test/loss_objectness', self.loss_objectness, epoch)
-            writer.add_scalar('Test/loss_rpn_box_reg', self.loss_rpn_box_reg, epoch)
+            writer.add_scalar('Test/total_loss', 1.0 * self.current_total / self.iterations, epoch)
+            writer.add_scalar('Test/loss_box_reg', 1.0 * self.loss_box_reg / self.iterations, epoch)
+            writer.add_scalar('Test/loss_classifier', 1.0 * self.loss_classifier / self.iterations, epoch)
+            writer.add_scalar('Test/loss_objectness', 1.0 * self.loss_objectness / self.iterations, epoch)
+            writer.add_scalar('Test/loss_rpn_box_reg', 1.0 * self.loss_rpn_box_reg / self.iterations, epoch)
 
     def write_coco(self, epoch, m_ap, ap_50, ap_75):
         if self.is_coco:
@@ -267,6 +267,8 @@ def train_step(epoch):
         loss = sum(loss for loss in loss_dict.values())
         loss_value = loss.item()
         if (math.isnan(loss_value)):
+            optimizer.zero_grad()
+            print('Skip iteration')
             continue
         loss_hist.send(loss_value, loss_dict)
         optimizer.zero_grad()

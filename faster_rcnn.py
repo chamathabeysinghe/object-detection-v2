@@ -267,6 +267,8 @@ def train_step(epoch):
         loss = sum(loss for loss in loss_dict.values())
         loss_value = loss.item()
         if (math.isnan(loss_value)):
+            optimizer.zero_grad()
+            print('skip iteration')
             continue
         loss_hist.send(loss_value, loss_dict)
         optimizer.zero_grad()
