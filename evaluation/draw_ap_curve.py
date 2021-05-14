@@ -27,7 +27,7 @@ train_csv = pd.read_csv(os.path.join(DATASET_DIR, 'train.csv'))
 test_csv = pd.read_csv(os.path.join(DATASET_DIR, 'test.csv'))
 TRAIN_ROOT_PATH = os.path.join(DATASET_DIR, 'train/')
 TEST_ROOT_PATH = os.path.join(DATASET_DIR, 'test/')
-writer = SummaryWriter('runs_batch')
+writer = SummaryWriter('runs_batch_ap')
 BATCH_SIZE = 4
 
 def get_train_transforms():
@@ -340,7 +340,16 @@ cpu_device = torch.device("cpu")
 annType = 'bbox'
 cocoGt = COCO(os.path.join(DATASET_DIR, 'ground_truth-new.json'))
 num_classes = 2
+loss_hist_coco = Averager(writer, is_train=False, is_coco=True)
 
+model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True, pretrained_backbone=True)
+in_features = model.roi_heads.box_predictor.cls_score.in_features
+model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+model.to(device)
+print('COCO evaluation script for epoch {} ...'.format(0))
+
+with torch.no_grad():
+    coco_evaluation(0)
 
 def load_model(current_epoch):
     model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True, pretrained_backbone=True)
@@ -355,11 +364,10 @@ def load_model(current_epoch):
     return model
 
 
-loss_hist_coco = Averager(writer, is_train=False, is_coco=True)
 
 for epoch in range(27):
     model = load_model(epoch)
-    print('COCO evaluation script for epoch {} ...'.format(epoch))
+    print('COCO evaluation script for epoch {} ...'.format(epoch+1))
     with torch.no_grad():
-        coco_evaluation(epoch)
+        coco_evaluation(epoch+1)
 

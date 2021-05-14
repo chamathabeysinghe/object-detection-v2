@@ -9,8 +9,8 @@ from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
 plt.rcParams["figure.figsize"] = (60, 20)
 track_first_n_frames = 500
-CHECKPOINT_DIR = './checkpoints'
-VID_DIR = './raw_videos'
+CHECKPOINT_DIR = '/home/cabe0006/mb20_scratch/chamath/object-detection-v2/checkpoints_batch'
+VID_DIR = '../raw_data/videos'
 DEST_DIR = './result_videos'
 os.makedirs(DEST_DIR, exist_ok=True)
 
@@ -51,8 +51,8 @@ def show_prediction(sample, boxes, scores):
                           (box[0], box[1]),
                           (box[2], box[3]),
                           (220, 0, 0), thickness=1)
-    plt.imshow(sample)
-    plt.show()
+    # plt.imshow(sample)
+    # plt.show()
 
 
 def predict_batch(images):
@@ -88,7 +88,7 @@ num_classes = 2
 in_features = model.roi_heads.box_predictor.cls_score.in_features
 model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
 
-checkpoint_path = os.path.join(CHECKPOINT_DIR, 'checkpoint-{}.pt'.format(26))
+checkpoint_path = os.path.join(CHECKPOINT_DIR, 'checkpoint-{}.pt'.format(7))
 print('Loading from : {}'.format(checkpoint_path))
 checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
 model.load_state_dict(checkpoint['model_state_dict'])
@@ -96,7 +96,11 @@ model.to(device)
 model.eval()
 
 
-files = ['sample2.mp4']
+# files = ['sample2.mp4']
+# files = ['masked_sample2_2']
+files = ['sample4', 'sample2', 'sample3', 'sample14', 'sample13', 'sample12',
+         'sample10', 'sample9', 'sample8', 'sample7', 'sample1', 'masked_sample2_2', 'masked_sample2']
+
 for file in files:
-    process_file(file)
+    process_file(file+'.mp4')
 

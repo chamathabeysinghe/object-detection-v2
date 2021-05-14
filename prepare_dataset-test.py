@@ -16,12 +16,20 @@ from torch.utils.data.sampler import SequentialSampler, RandomSampler
 from torch.utils.tensorboard import SummaryWriter
 
 # writer = SummaryWriter()
+json_path = './raw_data/json/'
 
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
-print(torch.cuda.is_available())
-print(torch.cuda.current_device())
-print(torch.cuda.device(0))
-print(torch.cuda.device_count())
-print(torch.cuda.get_device_name(0))
 
-torch.tensor([1,2,4]),shape
+files = list(filter(lambda x: len(x.split('.'))>1 and x.split('.')[1] == 'json',os.listdir(json_path)))
+files = [x.split('.')[0] for x in files]
+test_files = ['sample2', 'sample3']
+train_files = list(filter(lambda x: x not in test_files, files))
+
+print(files)
+
+
+# read_csvsync -av ? progress -e ?ssh -i gpu-instance-oregon.pem? /home/cabe0006/mb20_scratch/chamath/object-detection-v2/dataset/ ubuntu@ec2-34-220-192-22.us-west-2.compute.amazonaws.com:/home/ubuntu/dataset
+#
+# rsync -av ? progress -e "ssh -i gpu-instance-oregon.pem" /home/cabe0006/mb20_scratch/chamath/object-detection-v2/dataset/ ubuntu@ec2-34-220-192-22.us-west-2.compute.amazonaws.com:/home/ubuntu/dataset
+#
+# rsync -av -progress -e "ssh -i gpu-instance-oregon.pem" /home/cabe0006/mb20_scratch/chamath/object-detection-v2/dataset/ ubuntu@ec2-34-220-192-22.us-west-2.compute.amazonaws.com:/home/ubuntu/dataset
+#

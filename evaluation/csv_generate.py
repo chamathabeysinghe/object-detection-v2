@@ -259,5 +259,8 @@ if len(os.listdir(CHECKPOINT_DIR)) > 0:
 
 
 model.eval()
-predict_step(train_loader, is_test=False)
-predict_step(val_loader, is_test=True)
+with torch.no_grad():
+    print('evaluating train dataset...')
+    predict_step(train_loader, is_test=False)
+    print('evaluating test dataset...')
+    predict_step(val_loader, is_test=True)
