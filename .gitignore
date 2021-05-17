@@ -3,3 +3,5 @@ venv2/
 runs
 .idea/
 *.mp4
+*.png
+*.jpg

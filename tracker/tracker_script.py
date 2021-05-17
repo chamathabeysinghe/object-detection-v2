@@ -255,10 +255,13 @@ def link_detections(frame_index):
     live_tracks = new_live_tracks + current_points
 
 
-files = ['sample3.mp4']
+files = ['sample2.mp4', 'sample3.mp4']
+
 os.makedirs('./results', exist_ok=True)
 
 for f in files:
+    print('File: {}'.format(f))
+    VIDEO_INDEX = int(f[6: -4])
     frames = convert_frames(os.path.join('./videos', f))
     df = pd.read_csv('./detection_data/eval-results-test.csv')
     del df['Unnamed: 0']
@@ -272,4 +275,5 @@ for f in files:
     draw_tracks()
     print('Writing results to video file...')
     write_file(frames, os.path.join('./results', f))
+    print('Done writing file: {}'.format(f))
 
