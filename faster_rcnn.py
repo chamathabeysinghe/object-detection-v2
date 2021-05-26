@@ -393,7 +393,7 @@ cpu_device = torch.device("cpu")
 annType = 'bbox'
 cocoGt = COCO(os.path.join(DATASET_DIR, 'ground_truth-new.json'))
 num_classes = 2
-EPOCHS = 100
+EPOCHS = 30
 CHECKPOINT_FREQ = 1
 
 
@@ -435,8 +435,10 @@ for epoch in range(initial_epoch, EPOCHS):
     print('Evaluating...')
     test_loss = test_step(epoch)
     print(f"Epoch #{epoch} train_loss: {train_loss} test_loss: {test_loss}")
-    # print('COCO evaluation script...')
-    # coco_evaluation(epoch)
+    if epoch % 10 == 0:
+        print('COCO evaluation script...')
+        coco_evaluation(epoch)
+
     if epoch % CHECKPOINT_FREQ == 0:
         print('Saving checkpoint...')
         torch.save({
