@@ -7,6 +7,8 @@ import random
 import os
 import math
 from pykalman import KalmanFilter
+import draw_utils
+from multiprocessing.pool import ThreadPool
 plt.rcParams["figure.figsize"] = (60, 20)
 SCORE_THRESHOLD = 0.4
 ALLOWED_MISSES = 7
@@ -29,6 +31,10 @@ class Point:
         self.missed_count = 0
         self.new_missed_count = 0
         self.terminated = False
+        self.bbox_center_chain = None
+        self.bbox_size_chain = None
+        self.frames_chain = None
+        self.measured_bbox_center_chain = None
 
     def get_parent(self):
         if (self.parent == None):
@@ -64,6 +70,80 @@ class Point:
     def get_box(self):
         return {'x1': self.x, 'y1': self.y, 'x2': self.x + self.w, 'y2': self.y + self.h}
 
+    def __build_kf_chain(self, bbox_center_chain):
+        position_index = -1
+        for i in range(len(bbox_center_chain) - 1):
+            if bbox_center_chain[i][0] > -1 and bbox_center_chain[i+1][0] > -1:
+                position_index = i
+                break
+
+        if position_index == -1:
+            return bbox_center_chain
+
+        NonMeasured = bbox_center_chain[:position_index]
+        Measured = bbox_center_chain[position_index:]
+        Measured = np.asarray(Measured)
+        # while True:
+        #     if Measured[0, 0] == -1.:
+        #         Measured = np.delete(Measured, 0, 0)
+        #     else:
+        #         break
+        # while True:
+        #     if Measured[1, 0] == -1.:
+        #         Measured = np.delete(Measured, 1, 0)
+        #     else:
+        #         break
+
+        MarkedMeasure = np.ma.masked_less(Measured, 0)
+        Transition_Matrix = np.asarray([[1, 0, 1, 0], [0, 1, 0, 1], [0, 0, 1, 0], [0, 0, 0, 1]])
+        Observation_Matrix = np.asarray([[1, 0, 0, 0], [0, 1, 0, 0]])
+        xinit = MarkedMeasure[0, 0]
+        yinit = MarkedMeasure[0, 1]
+        vxinit = MarkedMeasure[1, 0] - MarkedMeasure[0, 0]
+        vyinit = MarkedMeasure[1, 1] - MarkedMeasure[0, 1]
+        initstate = [xinit, yinit, vxinit, vyinit]
+        initcovariance = 1.0e-3 * np.eye(4)
+        x = 1
+        transistionCov = np.asarray(
+            [[x / 3, x / 2, 0, 0], [x / 2, x, 0, 0], [0, 0, x / 3, x / 2], [0, 0, x / 2, x]])  # 1.0e-1*np.eye(4)
+        observationCov = 1.0e-1 * np.eye(2)
+        kf = KalmanFilter(transition_matrices=Transition_Matrix,
+                          observation_matrices=Observation_Matrix,
+                          initial_state_mean=initstate,
+                          initial_state_covariance=initcovariance,
+                          transition_covariance=transistionCov,
+                          observation_covariance=observationCov)
+        (filtered_state_means, filtered_state_covariances) = kf.filter(MarkedMeasure)
+        filtered_state_means = filtered_state_means.tolist()
+        return NonMeasured + filtered_state_means
+
+    def get_bbox_chain(self):
+        # if self.parent is None:
+        bbox_center_chain = []
+        bbox_size_chain = []
+        frames_chain = []
+        current_node = self.get_parent()
+        while current_node is not None:
+            bbox_center_chain.append([current_node.x, current_node.y])
+            bbox_size_chain.append([current_node.w, current_node.h])
+            frames_chain.append(current_node.frame_index)
+            next_node = current_node.next
+            if next_node is None:
+                skip_count = current_node.missed_count
+            else:
+                skip_count = next_node.frame_index - current_node.frame_index
+            for skip_index in range(1, skip_count):
+                bbox_center_chain.append([-1, -1])
+                bbox_size_chain.append([180, 180])
+                frames_chain.append(current_node.frame_index + skip_index)
+            current_node = next_node
+
+        self.bbox_center_chain = bbox_center_chain
+        self.bbox_size_chain = bbox_size_chain
+        self.frames_chain = frames_chain
+        self.measured_bbox_center_chain = self.__build_kf_chain(bbox_center_chain)
+        return self.bbox_center_chain, self.bbox_size_chain,  self.frames_chain, self.measured_bbox_center_chain
+
     def get_predict_box(self):
         Measured = self.get_observations_chain()
         if (len(Measured) < 2):
@@ -90,7 +170,9 @@ class Point:
         vyinit = MarkedMeasure[1, 1] - MarkedMeasure[0, 1]
         initstate = [xinit, yinit, vxinit, vyinit]
         initcovariance = 1.0e-3 * np.eye(4)
-        transistionCov = 1.0e-1 * np.eye(4)
+        x = 1
+        transistionCov = np.asarray(
+            [[x / 3, x / 2, 0, 0], [x / 2, x, 0, 0], [0, 0, x / 3, x / 2], [0, 0, x / 2, x]])  # 1.0e-1*np.eye(4)
         observationCov = 1.0e-1 * np.eye(2)
         kf = KalmanFilter(transition_matrices=Transition_Matrix,
                           observation_matrices=Observation_Matrix,
@@ -122,17 +204,15 @@ class Point:
     def set_id(self, id):
         self.id = id
 
-
-track_first_n_frames = 500
-
-
+capture_len = 500
 def convert_frames(vid_file):
     import cv2
     capture = cv2.VideoCapture(vid_file)
+    # capture.set(cv2.CAP_PROP_POS_FRAMES, start_index)
     read_count = 0
     print("Converting video file: {}".format(vid_file))
     frames = []
-    while read_count < track_first_n_frames:
+    while read_count < capture_len:
         success, image = capture.read()
         if not success:
             raise ValueError("Could not read first frame. Is the video file valid? ({})".format(vid_file))
@@ -223,18 +303,78 @@ def draw_box(point):
                   (int(point.x + point.w), int(point.y + point.h)),
                   color, 6)
 
-    #     predict_box = point.get_predict_box()
-    #     cv2.rectangle(frames[point.frame_index],
-    #                   (int(predict_box['x1']), int(predict_box['y1'])),
-    #                   (int(predict_box['x2']), int(predict_box['y2'])),
-    #                   (255, 255, 255),6)
-
     cv2.putText(frames[point.frame_index],
                 str(point.id),
                 (int(point.x), random.randint(int(point.y) - 40, int(point.y) - 10)),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 3, color,
                 2, cv2.LINE_AA)
+
+
+def draw_box_1(index, bbox_center_chain, bbox_size_chain, frames_chain, measured_bbox_center_chain, color, id):
+    frame_index = frames_chain[index]
+    frame = frames[frame_index]
+    bbox = bbox_center_chain[index]
+    predicted_bbox = measured_bbox_center_chain[index]
+    bbox_size = bbox_size_chain[index]
+    dotted = False
+    if bbox[0] == -1 or bbox[1] == -1:
+        dotted = True
+        bbox = predicted_bbox
+
+    if bbox[0] == -1 or bbox[1] == -1:
+        return
+
+    if dotted:
+        draw_utils.drawrect(frame,
+                            (int(bbox[0]), int(bbox[1])),
+                            (int(bbox[0] + bbox_size[0]), int(bbox[1] + bbox_size[1])),
+                            color, 6)
+    else:
+        cv2.rectangle(frame,
+                      (int(bbox[0]), int(bbox[1])),
+                      (int(bbox[0] + bbox_size[0]), int(bbox[1] + bbox_size[1])),
+                      color, 6)
+    cv2.putText(frame,
+                str(id),
+                (int(bbox[0]), random.randint(int(bbox[1]) - 40, int(bbox[1]) - 10)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                3, color,
+                2, cv2.LINE_AA)
+
+
+def draw_tail(index, bbox_center_chain, bbox_size_chain, frames_chain, measured_bbox_center_chain, color):
+
+    frame_index = frames_chain[index]
+    frame = frames[frame_index]
+    # bbox = bbox_center_chain[index]
+    # predicted_bbox = measured_bbox_center_chain[index]
+    # bbox_size = bbox_size_chain[index]
+
+    tail_length = min(10, index)
+    tail_positions = []
+
+    for t in range(index - tail_length, index):
+        bbox = bbox_center_chain[t]
+        predicted_bbox = measured_bbox_center_chain[t]
+        if bbox[0] == -1 or bbox[1] == -1:
+            bbox = predicted_bbox
+        if bbox[0] == -1 or bbox[1] == -1:
+            continue
+        box_size = bbox_size_chain[t]
+        tail_positions.append([int(bbox[0] + box_size[0]/2), int(bbox[1] + box_size[1]/2)])
+    points = np.array(tail_positions)
+    cv2.polylines(frame, np.int32([points]), isClosed=False, color=color, thickness=2, lineType=cv2.LINE_AA)
+
+def draw_parent_node_track(node):
+    if node.id not in colors:
+        colors[node.id] = (random.randint(0, 256), random.randint(0, 256), random.randint(0, 256))
+    color = colors[node.id]
+    bbox_center_chain, bbox_size_chain, frames_chain, measured_bbox_center_chain = node.get_bbox_chain()
+
+    for i in range(len(frames_chain)):
+        draw_box_1(i,  bbox_center_chain, bbox_size_chain, frames_chain, measured_bbox_center_chain, color, node.id)
+        draw_tail(i,  bbox_center_chain, bbox_size_chain, frames_chain, measured_bbox_center_chain, color)
 
 
 def draw_tracks():
@@ -253,11 +393,13 @@ def draw_tracks():
             child_node = child_node.next
 
     for node in parent_nodes:
-        draw_box(node)
-        child_node = node.next
-        while child_node != None:
-            draw_box(child_node)
-            child_node = child_node.next
+        draw_parent_node_track(node)
+    # for node in parent_nodes:
+    #     draw_box(node)
+    #     child_node = node.next
+    #     while child_node != None:
+    #         draw_box(child_node)
+    #         child_node = child_node.next
 
 
 def get_frame_points(frame_index):
@@ -333,9 +475,12 @@ def link_detections(frame_index):
     live_tracks = new_live_tracks + current_points
 
 
+track_first_n_frames = 30
+start_index = 100
 files = ['sample2.mp4', 'sample3.mp4']
 
-os.makedirs('./results', exist_ok=True)
+os.makedirs('results', exist_ok=True)
+
 
 for f in files:
     print('File: {}'.format(f))
@@ -345,13 +490,18 @@ for f in files:
     del df['Unnamed: 0']
 
     terminated_tracks = []
-    live_tracks = get_frame_points(0)
+    live_tracks = get_frame_points(start_index)
     colors = {}
 
-    for i in range(1, track_first_n_frames):
+    for i in range(start_index + 1, start_index + track_first_n_frames):
+        print(i)
         link_detections(i)
+    print('Drawing tracks...')
     draw_tracks()
     print('Writing results to video file...')
-    write_file(frames, os.path.join('./results', f))
+    write_file(frames, os.path.join('results', f))
     print('Done writing file: {}'.format(f))
+
+# p = ThreadPool(2)
+# p.map(hello, range(3))
 
