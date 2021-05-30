@@ -13,7 +13,7 @@ plt.rcParams["figure.figsize"] = (60, 20)
 SCORE_THRESHOLD = 0.4
 ALLOWED_MISSES = 7
 IOU_OVERLAP = 0.1
-VIDEO_INDEX = 3
+capture_len = 40
 
 
 class Point:
@@ -204,7 +204,7 @@ class Point:
     def set_id(self, id):
         self.id = id
 
-capture_len = 500
+
 def convert_frames(vid_file):
     import cv2
     capture = cv2.VideoCapture(vid_file)
@@ -293,25 +293,25 @@ def get_frame_detections(vid_index, frame_index):
     return df.loc[df['image_id'] == vid_index * 500 + frame_index]
 
 
-def draw_box(point):
-    if point.id not in colors:
-        colors[point.id] = (random.randint(0, 256), random.randint(0, 256), random.randint(0, 256))
-    color = colors[point.id]
+# def draw_box(point):
+#     if point.id not in colors:
+#         colors[point.id] = (random.randint(0, 256), random.randint(0, 256), random.randint(0, 256))
+#     color = colors[point.id]
+#
+#     cv2.rectangle(frames[point.frame_index],
+#                   (int(point.x), int(point.y)),
+#                   (int(point.x + point.w), int(point.y + point.h)),
+#                   color, 6)
+#
+#     cv2.putText(frames[point.frame_index],
+#                 str(point.id),
+#                 (int(point.x), random.randint(int(point.y) - 40, int(point.y) - 10)),
+#                 cv2.FONT_HERSHEY_SIMPLEX,
+#                 3, color,
+#                 2, cv2.LINE_AA)
 
-    cv2.rectangle(frames[point.frame_index],
-                  (int(point.x), int(point.y)),
-                  (int(point.x + point.w), int(point.y + point.h)),
-                  color, 6)
 
-    cv2.putText(frames[point.frame_index],
-                str(point.id),
-                (int(point.x), random.randint(int(point.y) - 40, int(point.y) - 10)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                3, color,
-                2, cv2.LINE_AA)
-
-
-def draw_box_1(index, bbox_center_chain, bbox_size_chain, frames_chain, measured_bbox_center_chain, color, id):
+def draw_box_1(index, bbox_center_chain, bbox_size_chain, frames_chain, measured_bbox_center_chain, color, id, frames):
     frame_index = frames_chain[index]
     frame = frames[frame_index]
     bbox = bbox_center_chain[index]
@@ -343,7 +343,7 @@ def draw_box_1(index, bbox_center_chain, bbox_size_chain, frames_chain, measured
                 2, cv2.LINE_AA)
 
 
-def draw_tail(index, bbox_center_chain, bbox_size_chain, frames_chain, measured_bbox_center_chain, color):
+def draw_tail(index, bbox_center_chain, bbox_size_chain, frames_chain, measured_bbox_center_chain, color, frames):
 
     frame_index = frames_chain[index]
     frame = frames[frame_index]
@@ -366,18 +366,18 @@ def draw_tail(index, bbox_center_chain, bbox_size_chain, frames_chain, measured_
     points = np.array(tail_positions)
     cv2.polylines(frame, np.int32([points]), isClosed=False, color=color, thickness=2, lineType=cv2.LINE_AA)
 
-def draw_parent_node_track(node):
+def draw_parent_node_track(node, colors, frames):
     if node.id not in colors:
         colors[node.id] = (random.randint(0, 256), random.randint(0, 256), random.randint(0, 256))
     color = colors[node.id]
     bbox_center_chain, bbox_size_chain, frames_chain, measured_bbox_center_chain = node.get_bbox_chain()
 
     for i in range(len(frames_chain)):
-        draw_box_1(i,  bbox_center_chain, bbox_size_chain, frames_chain, measured_bbox_center_chain, color, node.id)
-        draw_tail(i,  bbox_center_chain, bbox_size_chain, frames_chain, measured_bbox_center_chain, color)
+        draw_box_1(i,  bbox_center_chain, bbox_size_chain, frames_chain, measured_bbox_center_chain, color, node.id, frames)
+        draw_tail(i,  bbox_center_chain, bbox_size_chain, frames_chain, measured_bbox_center_chain, color, frames)
 
 
-def draw_tracks():
+def draw_tracks(live_tracks, terminated_tracks, colors, frames):
     parent_nodes = []
     for node in live_tracks + terminated_tracks:
         if node.parent == None:
@@ -393,7 +393,7 @@ def draw_tracks():
             child_node = child_node.next
 
     for node in parent_nodes:
-        draw_parent_node_track(node)
+        draw_parent_node_track(node, colors, frames)
     # for node in parent_nodes:
     #     draw_box(node)
     #     child_node = node.next
@@ -402,9 +402,9 @@ def draw_tracks():
     #         child_node = child_node.next
 
 
-def get_frame_points(frame_index):
+def get_frame_points(frame_index, video_index):
     detections = list(map(lambda x: Point(x[2], x[3], x[4], x[5], x[6], frame_index),
-                          get_frame_detections(VIDEO_INDEX, frame_index).values))
+                          get_frame_detections(video_index, frame_index).values))
     detections = list(filter(lambda x: x.pass_threshold(SCORE_THRESHOLD), detections))
     return detections
 
@@ -460,9 +460,8 @@ def matching(live_tracks, current_points, missed_count=0, threshold=0.9):
         track.new_missed_count = 0
 
 
-def link_detections(frame_index):
-    global live_tracks
-    current_points = get_frame_points(frame_index)
+def link_detections(frame_index, video_index, live_tracks, terminated_tracks):
+    current_points = get_frame_points(frame_index, video_index)
     for miss_count in range(0, ALLOWED_MISSES):
         matching(live_tracks, current_points, miss_count, 1 - IOU_OVERLAP)
     new_live_tracks = []
@@ -475,32 +474,37 @@ def link_detections(frame_index):
     live_tracks = new_live_tracks + current_points
 
 
-track_first_n_frames = 500
+track_first_n_frames = 30
 start_index = 0
 files = ['sample2.mp4', 'sample3.mp4']
 
 os.makedirs('results', exist_ok=True)
+df = pd.read_csv('./detection_data/eval-results-test.csv')
+del df['Unnamed: 0']
 
 
-for f in files:
+def handle_file(f):
     print('File: {}'.format(f))
     VIDEO_INDEX = int(f[6: -4])
     frames = convert_frames(os.path.join('./videos', f))
-    df = pd.read_csv('./detection_data/eval-results-test.csv')
-    del df['Unnamed: 0']
-
     terminated_tracks = []
-    live_tracks = get_frame_points(start_index)
+    live_tracks = get_frame_points(start_index, VIDEO_INDEX)
     colors = {}
 
     for i in range(start_index + 1, start_index + track_first_n_frames):
         print(i)
-        link_detections(i)
+        link_detections(i, VIDEO_INDEX, live_tracks, terminated_tracks)
     print('Drawing tracks...')
-    draw_tracks()
+    draw_tracks(live_tracks, terminated_tracks, colors, frames)
     print('Writing results to video file...')
     write_file(frames, os.path.join('results', f))
     print('Done writing file: {}'.format(f))
+
+
+for f in files:
+    handle_file(f)
+
+
 
 # p = ThreadPool(2)
 # p.map(hello, range(3))
