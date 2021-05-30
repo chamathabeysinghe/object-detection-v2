@@ -255,15 +255,15 @@ def link_detections(frame_index):
     live_tracks = new_live_tracks + current_points
 
 
-files = ['sample2.mp4', 'sample3.mp4']
+files = ['sample1.mp4', 'sample4.mp4','sample7.mp4','sample8.mp4','sample9.mp4','sample10.mp4','sample12.mp4','sample13.mp4','sample14.mp4',]
 
-os.makedirs('./results', exist_ok=True)
+os.makedirs('/home/cabe0006/mb20_scratch/chamath/object-detection-v2/tracker/results', exist_ok=True)
 
 for f in files:
     print('File: {}'.format(f))
     VIDEO_INDEX = int(f[6: -4])
-    frames = convert_frames(os.path.join('./videos', f))
-    df = pd.read_csv('./detection_data/eval-results-test.csv')
+    frames = convert_frames(os.path.join('/home/cabe0006/mb20_scratch/chamath/object-detection-v2/tracker/videos', f))
+    df = pd.read_csv('./detection_data/eval-results-train.csv')
     del df['Unnamed: 0']
 
     terminated_tracks = []
@@ -274,6 +274,6 @@ for f in files:
         link_detections(i)
     draw_tracks()
     print('Writing results to video file...')
-    write_file(frames, os.path.join('./results', f))
+    write_file(frames, os.path.join('/home/cabe0006/mb20_scratch/chamath/object-detection-v2/tracker/results', f))
     print('Done writing file: {}'.format(f))
 

@@ -257,7 +257,7 @@ def collate_fn(batch):
 
 
 def train_step(epoch):
-    # model.train()
+    model.train()
     itr = 1
     loss_hist.reset()
     for images_in, targets_in, img_id in train_loader:
@@ -287,7 +287,7 @@ def train_step(epoch):
 
 
 def test_step(epoch):
-    # model.train()
+    model.train()
     itr = 1
     loss_hist_val.reset()
     with torch.no_grad():
@@ -313,26 +313,27 @@ def coco_evaluation(epoch):
     model.eval()
     itr = 1
     json_array = []
-    for images, targets, img_ids in val_loader:
-        images = list(image.to(device) for image in images)
-        # targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
-        outputs = model(images)
-        outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
+    with torch.no_grad():
+        for images, targets, img_ids in val_loader:
+            images = list(image.to(device) for image in images)
+            # targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+            outputs = model(images)
+            outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
 
-        for index, prediction in enumerate(outputs):
-            boxes = prediction['boxes'].tolist()
-            scores = prediction['scores'].tolist()
-            img_id = img_ids[index]
-            for i, box in enumerate(boxes):
-                obj = {
-                    "image_id": int(img_id),
-                    "category_id": 1,
-                    "bbox": [box[0] * 4, box[1] * 4, (box[2] - box[0]) * 4, (box[3] - box[1]) * 4],
-                    "score": scores[i]
-                }
-                json_array.append(obj)
-        print(f"Iteration #{itr}")
-        itr += 1
+            for index, prediction in enumerate(outputs):
+                boxes = prediction['boxes'].tolist()
+                scores = prediction['scores'].tolist()
+                img_id = img_ids[index]
+                for i, box in enumerate(boxes):
+                    obj = {
+                        "image_id": int(img_id),
+                        "category_id": 1,
+                        "bbox": [box[0] * 4, box[1] * 4, (box[2] - box[0]) * 4, (box[3] - box[1]) * 4],
+                        "score": scores[i]
+                    }
+                    json_array.append(obj)
+            print(f"Iteration #{itr}")
+            itr += 1
     with open('eval-results.json', 'w') as outfile:
         json.dump(json_array, outfile)
 
@@ -393,7 +394,7 @@ cpu_device = torch.device("cpu")
 annType = 'bbox'
 cocoGt = COCO(os.path.join(DATASET_DIR, 'ground_truth-new.json'))
 num_classes = 2
-EPOCHS = 30
+EPOCHS = 300
 CHECKPOINT_FREQ = 1
 
 
