@@ -10,8 +10,18 @@ from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 plt.rcParams["figure.figsize"] = (60, 20)
 track_first_n_frames = 500
 CHECKPOINT_DIR = '/home/cabe0006/mb20_scratch/chamath/object-detection-v2/checkpoints'
-VID_DIR = '/home/cabe0006/mb20_scratch/chamath/data/raw_videos'
-DEST_DIR = '/home/cabe0006/mb20_scratch/chamath/object-detection-v2/result_videos'
+
+# BASE_DIR = '/Users/cabe0006/Projects/monash/Datasets'
+# DATASET = 'ant_dataset_small'
+
+BASE_DIR = '/home/cabe0006/mb20_scratch/chamath/data'
+DATASET = 'ant_dataset'
+
+
+TAGGED = 'tagged'
+VID_DIR = os.path.join(BASE_DIR, DATASET, TAGGED)
+DEST_DIR = os.path.join(BASE_DIR, f'{DATASET}_predictions', TAGGED)
+
 os.makedirs(DEST_DIR, exist_ok=True)
 
 
@@ -100,7 +110,8 @@ model.eval()
 # files = ['masked_sample2_2']
 # files = ['sample4', 'sample2', 'sample3', 'sample14', 'sample13', 'sample12',
 #          'sample10', 'sample9', 'sample8', 'sample7', 'sample1', 'masked_sample2_2', 'masked_sample2']
-files = [f'sample{x}' for x in range(50, 61)]
+# files = [f'sample{x}' for x in range(50, 61)]
+files = os.listdir(os.path.join(VID_DIR))
 for file in files:
-    process_file(file+'.mp4')
+    process_file(file)
 
