@@ -112,6 +112,7 @@ model.eval()
 #          'sample10', 'sample9', 'sample8', 'sample7', 'sample1', 'masked_sample2_2', 'masked_sample2']
 # files = [f'sample{x}' for x in range(50, 61)]
 files = os.listdir(os.path.join(VID_DIR))
+files = list(filter(lambda s: int(s.split('_')[1][:-4]) == 0, files))
 for file in files:
     process_file(file)
 
